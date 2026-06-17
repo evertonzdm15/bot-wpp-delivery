@@ -1,0 +1,76 @@
+# Deploy em produção — Docker Swarm + Traefik (bot.grupodm.site)
+# Padrão alinhado ao servidor grupodm:
+#   - Rede externa do Traefik: "grupodmsite"
+#   - certresolver: "letsencryptresolver" · entrypoint: "websecure" · porta 3000
+#
+# Deploy (via deploy.sh, que builda a imagem local e sobe o stack):
+#   bash deploy.sh
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: botdelivery
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+
+  bot:
+    image: ${IMAGE:-SEU_REGISTRO/bot-delivery:latest}
+    environment:
+      NODE_ENV: production
+      TZ: America/Sao_Paulo
+      PORT: "3000"
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/botdelivery?schema=public
+      REDIS_URL: redis://redis:6379
+      EVOLUTION_API_URL: ${EVOLUTION_API_URL:-https://api.grupodm.site}
+      EVOLUTION_INSTANCE: ${EVOLUTION_INSTANCE:-GRUPODM}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+      PUBLIC_URL: ${PUBLIC_URL:-https://bot.grupodm.site}
+      WEBHOOK_TOKEN: ${WEBHOOK_TOKEN:-}
+      SUPER_ADMIN_PHONE: ${SUPER_ADMIN_PHONE:-}
+      SUPER_ADMIN_CODE: ${SUPER_ADMIN_CODE:-}
+      BOT_TEST_CODE: ${BOT_TEST_CODE:-}
+      SLA_RAPIDA_R6_MIN: "40"
+      SLA_RAPIDA_MIN: "90"
+      ALERTA_ANTECEDENCIA_MIN: "15"
+    networks:
+      - internal
+      - grupodmsite
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=grupodmsite
+        - traefik.http.routers.botdelivery.rule=Host(`bot.grupodm.site`)
+        - traefik.http.routers.botdelivery.entrypoints=websecure
+        - traefik.http.routers.botdelivery.tls.certresolver=letsencryptresolver
+        - traefik.http.services.botdelivery.loadbalancer.server.port=3000
+        - traefik.http.services.botdelivery.loadbalancer.passHostHeader=true
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  internal:
+    driver: overlay
+  grupodmsite:
+    external: true

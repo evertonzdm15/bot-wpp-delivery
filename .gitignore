@@ -1,0 +1,18 @@
+node_modules/
+dist/
+
+# Segredos / ambiente
+.env
+.env.production
+.env.*.local
+.claude/settings.local.json
+
+# Logs e temporários
+*.log
+*.out
+cloudflared*
+tmp-*.ts
+connect.json
+qrcode-conexao.png
+
+.DS_Store

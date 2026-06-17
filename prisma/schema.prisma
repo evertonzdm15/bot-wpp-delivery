@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  FILIAL
+  MOTOBOY
+}
+
+enum TaskStatus {
+  PENDENTE
+  ATRIBUIDA
+  FINALIZADA
+  CANCELADA
+}
+
+enum FinishReason {
+  ENTREGUE
+  NAO_ENTREGUE
+  RETORNO
+}
+
+enum MotoboyStatus {
+  DISPONIVEL
+  OCUPADO
+  OFFLINE
+}
+
+/// Tenant: cada Admin é um cliente do Super Admin (operação independente).
+model Admin {
+  id            String         @id @default(cuid())
+  name          String
+  accessCode    String         @unique
+  active        Boolean        @default(true)
+  /// Taxa da plataforma (Super Admin) em % sobre o valor das entregas
+  platformFeePercent Int       @default(0)
+  branches      Branch[]
+  deliveryTypes DeliveryType[]
+  roles         UserRole[]
+  tasks         Task[]
+  createdAt     DateTime       @default(now())
+}
+
+model User {
+  id              String        @id @default(cuid())
+  phone           String        @unique
+  name            String?
+  /// Senha pessoal (número = login, código = senha)
+  accessCode      String?
+  /// Valor padrão por entrega do motoboy, em centavos
+  defaultRateCents Int?
+  /// Disponibilidade do motoboy (para atribuição automática)
+  status          MotoboyStatus @default(DISPONIVEL)
+  roles           UserRole[]
+  rates           MotoboyRate[]
+  tasksCriadas    Task[]        @relation("TaskCreator")
+  entregas        Task[]        @relation("TaskMotoboy")
+  lancamentos     Lancamento[]
+  createdAt       DateTime      @default(now())
+}
+
+/// Vínculo de um perfil (menu) a um número, escopado a um tenant/filial.
+model UserRole {
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     Role
+  adminId  String?
+  admin    Admin?  @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  /// Atribuição automática habilitada para este motoboy (controlado pelo Admin)
+  autoAssign Boolean @default(false)
+
+  @@index([userId])
+}
+
+model Branch {
+  id            String         @id @default(cuid())
+  adminId       String
+  admin         Admin          @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  name          String
+  accessCode    String         @unique
+  active        Boolean        @default(true)
+  roles         UserRole[]
+  tasks         Task[]         @relation("BranchTasks")
+  deliveryTypes DeliveryType[]
+  createdAt     DateTime       @default(now())
+}
+
+/// Tipo de entrega configurável por filial (com prazo próprio).
+model DeliveryType {
+  id        String        @id @default(cuid())
+  branchId  String
+  branch    Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  adminId   String
+  admin     Admin         @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  name      String
+  /// Prazo em minutos. Quando scheduled = true, usa o horário informado.
+  slaMin    Int?
+  scheduled Boolean       @default(false)
+  active    Boolean       @default(true)
+  rates     MotoboyRate[]
+  tasks     Task[]
+  createdAt DateTime      @default(now())
+}
+
+/// Valor de um tipo de entrega (ou TR) para um motoboy específico, em centavos.
+model MotoboyRate {
+  id             String        @id @default(cuid())
+  motoboyId      String
+  motoboy        User          @relation(fields: [motoboyId], references: [id], onDelete: Cascade)
+  deliveryTypeId String?
+  deliveryType   DeliveryType? @relation(fields: [deliveryTypeId], references: [id], onDelete: Cascade)
+  isTR           Boolean       @default(false)
+  valueCents     Int
+
+  @@index([motoboyId])
+}
+
+model Task {
+  id             String        @id @default(cuid())
+  code           Int           @unique @default(autoincrement())
+  adminId        String
+  admin          Admin         @relation(fields: [adminId], references: [id])
+  branchId       String
+  branch         Branch        @relation("BranchTasks", fields: [branchId], references: [id])
+  deliveryTypeId String?
+  deliveryType   DeliveryType? @relation(fields: [deliveryTypeId], references: [id])
+  /// Snapshot do nome do tipo (resiste a edição/remoção do tipo)
+  typeName       String
+  status         TaskStatus    @default(PENDENTE)
+  priority       Boolean       @default(false)
+  createdById    String
+  createdBy      User          @relation("TaskCreator", fields: [createdById], references: [id])
+  motoboyId      String?
+  motoboy        User?         @relation("TaskMotoboy", fields: [motoboyId], references: [id])
+  clientName     String?
+  clientPhone    String?
+  address        String?
+  notes          String?
+  items          TaskItem[]
+  /// Coletas adicionais (TR): texto livre, uma por item. Cada string = 1 TR.
+  trItems        String[]      @default([])
+  scheduledAt    DateTime?
+  dueAt          DateTime?
+  alertSent      Boolean       @default(false)
+  assignedAt     DateTime?
+  finishedAt     DateTime?
+  finishReason   FinishReason?
+  finishNote     String?
+  lancamentos    Lancamento[]
+  messages       TaskMessage[]
+  createdAt      DateTime      @default(now())
+
+  @@index([status, dueAt])
+  @@index([adminId])
+  @@index([branchId])
+  @@index([motoboyId])
+}
+
+model TaskItem {
+  id          String @id @default(cuid())
+  taskId      String
+  task        Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  description String
+}
+
+/// Livro de lançamentos: 1 linha por unidade entregue (principal + cada TR).
+model Lancamento {
+  id        String       @id @default(cuid())
+  taskId    String
+  task      Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  motoboyId String
+  motoboy   User         @relation(fields: [motoboyId], references: [id])
+  adminId   String
+  /// Nome do tipo (snapshot) ou "TR"
+  kind      String
+  isTR      Boolean      @default(false)
+  valueCents Int         @default(0)
+  reason    FinishReason
+  paid      Boolean      @default(false)
+  paidAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([motoboyId, createdAt])
+  @@index([adminId, createdAt])
+  @@index([motoboyId, paid])
+}
+
+/// Mensagens enviadas (para finalização/pegar/soltar via resposta citada).
+model TaskMessage {
+  id          String   @id @default(cuid())
+  taskId      String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  waMessageId String   @unique
+  toPhone     String
+  createdAt   DateTime @default(now())
+}
