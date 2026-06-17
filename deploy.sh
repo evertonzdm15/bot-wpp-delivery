@@ -24,7 +24,9 @@ if [ "${POSTGRES_PASSWORD}" = "troque-esta-senha" ] || [ "${EVOLUTION_API_KEY}" 
 fi
 
 echo "==> Swarm..."
-docker info 2>/dev/null | grep -q "Swarm: active" || docker swarm init
+if [ "$(docker info --format '{{.Swarm.LocalNodeState}}' 2>/dev/null)" != "active" ]; then
+  docker swarm init
+fi
 
 echo "==> Rede externa ${NETWORK}..."
 docker network inspect "${NETWORK}" >/dev/null 2>&1 || \
