@@ -5,7 +5,7 @@ export const BACKUP_MIMETYPE = "application/json";
 
 /** Exporta todos os dados em JSON (para recuperação posterior). */
 export async function exportBackup(): Promise<{ buffer: Buffer; counts: Record<string, number> }> {
-  const [admins, users, branches, deliveryTypes, userRoles, motoboyRates, tasks, taskItems, lancamentos, waGroups] =
+  const [admins, users, branches, deliveryTypes, userRoles, motoboyRates, tasks, taskItems, lancamentos, waGroups, registrationRequests] =
     await Promise.all([
       prisma.admin.findMany(),
       prisma.user.findMany(),
@@ -17,12 +17,13 @@ export async function exportBackup(): Promise<{ buffer: Buffer; counts: Record<s
       prisma.taskItem.findMany(),
       prisma.lancamento.findMany(),
       prisma.waGroup.findMany(),
+      prisma.registrationRequest.findMany(),
     ]);
 
   const data = {
     version: 1,
     exportedAt: new Date().toISOString(),
-    admins, users, branches, deliveryTypes, userRoles, motoboyRates, tasks, taskItems, lancamentos, waGroups,
+    admins, users, branches, deliveryTypes, userRoles, motoboyRates, tasks, taskItems, lancamentos, waGroups, registrationRequests,
   };
   const counts = {
     admins: admins.length,
@@ -57,6 +58,7 @@ export async function importBackup(buffer: Buffer): Promise<{ ok: boolean; msg: 
         await tx.motoboyRate.deleteMany({});
         await tx.userRole.deleteMany({});
         await tx.deliveryType.deleteMany({});
+        await tx.registrationRequest.deleteMany({});
         await tx.branch.deleteMany({});
         await tx.waGroup.deleteMany({});
         await tx.admin.deleteMany({});
@@ -70,6 +72,7 @@ export async function importBackup(buffer: Buffer): Promise<{ ok: boolean; msg: 
         await m(tx.user, data.users);
         await m(tx.waGroup, data.waGroups);
         await m(tx.branch, data.branches);
+        await m(tx.registrationRequest, data.registrationRequests);
         await m(tx.deliveryType, data.deliveryTypes);
         await m(tx.userRole, data.userRoles);
         await m(tx.motoboyRate, data.motoboyRates);

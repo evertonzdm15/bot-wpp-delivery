@@ -2,6 +2,14 @@ import { goTo, registerFlow } from "../core/engine";
 import { Ctx } from "../core/types";
 import { prisma } from "../lib/prisma";
 import { addRole, setAccessCode, upsertUser } from "../services/user.service";
+import { sendText } from "../services/evolution.service";
+import {
+  acceptRequest,
+  countPending,
+  generateInviteCode,
+  listPending,
+  rejectRequest,
+} from "../services/registration.service";
 import { adminReport, renderReport, Period } from "../services/report.service";
 import { resumoLinha } from "../services/dashboard.service";
 import { taskInclude } from "../services/task.service";
@@ -21,6 +29,7 @@ registerFlow("admin", {
     prompt: async (ctx) => {
       const admin = await prisma.admin.findUnique({ where: { id: adminId(ctx) } });
       const resumo = await resumoLinha({ adminId: adminId(ctx) });
+      const pend = await countPending(adminId(ctx));
       return ctx.reply(
         `👑 *ADMIN — ${admin?.name ?? "Operação"}*\n${resumo}\n\n` +
           "1️⃣ Filiais\n" +
@@ -30,7 +39,8 @@ registerFlow("admin", {
           "5️⃣ Histórico / Exportar\n" +
           "6️⃣ Motoboys em rota\n" +
           "7️⃣ Avisos (broadcast)\n" +
-          "8️⃣ Fechamento (pagamentos)\n\n" +
+          "8️⃣ Fechamento (pagamentos)\n" +
+          `9️⃣ Solicitações de cadastro${pend ? ` (${pend} ⏳)` : ""}\n\n` +
           `Digite o número da opção.\n${NAV_FOOTER}`
       );
     },
@@ -52,8 +62,10 @@ registerFlow("admin", {
           return goTo(ctx, "broadcast", "texto");
         case "8":
           return goTo(ctx, "fechamento", "menu");
+        case "9":
+          return goTo(ctx, "adminCadastros", "menu");
         default:
-          return ctx.reply("Opção inválida. Digite de *1* a *8*.");
+          return ctx.reply("Opção inválida. Digite de *1* a *9*.");
       }
     },
   },
@@ -607,6 +619,126 @@ registerFlow("adminRelatorio", {
       if (!period) return ctx.reply("Digite de *1* a *4*.");
       const r = await adminReport(adminId(ctx), period);
       await ctx.reply(renderReport("📊 *RELATÓRIO DA OPERAÇÃO*", period, r) + "\n\n" + NAV_FOOTER);
+      return showMainMenu(ctx);
+    },
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Solicitações de cadastro (auto-cadastro via código de convite)
+// ---------------------------------------------------------------------------
+const reqKindLabel = (kind: string) => (kind === "CLIENTE" ? "🏪 Loja/Cliente" : "🛵 Motoboy");
+
+registerFlow("adminCadastros", {
+  menu: {
+    prompt: async (ctx) => {
+      const admin = await prisma.admin.findUnique({ where: { id: adminId(ctx) } });
+      const pend = await listPending(adminId(ctx));
+      ctx.session.data.reqSel = pend.map((r) => ({ id: r.id, name: r.name, kind: r.kind }));
+      const lines = pend.map(
+        (r, i) =>
+          `${i + 1}. ${r.kind === "CLIENTE" ? "🏪" : "🛵"} *${r.name}* — ${r.phone}` +
+          (r.extra ? `\n   📍 ${r.extra}` : "")
+      );
+      return ctx.reply(
+        "🤝 *SOLICITAÇÕES DE CADASTRO*\n\n" +
+          `🔗 Código de convite: *${admin?.inviteCode ?? "(não gerado)"}*\n` +
+          "_Compartilhe esse código: lojas e motoboys digitam ele no primeiro acesso._\n\n" +
+          `⏳ *Pendentes (${pend.length}):*\n` +
+          (lines.join("\n") || "(nenhuma)") +
+          "\n\n1️⃣ Aprovar\n2️⃣ Recusar\n3️⃣ Gerar/alterar código de convite\n\n" +
+          NAV_FOOTER
+      );
+    },
+    handle: async (ctx, text) => {
+      const hasPending = (ctx.session.data.reqSel ?? []).length > 0;
+      switch (normalize(text)) {
+        case "1":
+          if (!hasPending) return ctx.reply("Não há solicitações pendentes.");
+          return goTo(ctx, "adminCadastros", "aprovar");
+        case "2":
+          if (!hasPending) return ctx.reply("Não há solicitações pendentes.");
+          return goTo(ctx, "adminCadastros", "recusar");
+        case "3":
+          return goTo(ctx, "adminCadastros", "gerarCodigo");
+        default:
+          return ctx.reply("Digite *1*, *2* ou *3*.");
+      }
+    },
+  },
+
+  aprovar: {
+    prompt: (ctx) => {
+      const sel = ctx.session.data.reqSel ?? [];
+      const lines = sel.map((r: any, i: number) => `${i + 1} - ${reqKindLabel(r.kind)} — ${r.name}`);
+      return ctx.reply("✅ Qual solicitação *aprovar*?\n\n" + (lines.join("\n") || "(nenhuma)"));
+    },
+    handle: async (ctx, text) => {
+      const sel = (ctx.session.data.reqSel ?? [])[Number(text.trim()) - 1];
+      if (!sel) return ctx.reply("Opção inválida.");
+      const res = await acceptRequest(sel.id);
+      if (!res) {
+        await ctx.reply("⚠️ Essa solicitação não está mais pendente.");
+        return showMainMenu(ctx);
+      }
+      await ctx.reply(
+        `✅ *${res.name}* aprovado como ${reqKindLabel(res.kind)}.\n` +
+          `📱 ${res.phone} · 🔐 código de acesso: *${res.accessCode}*` +
+          (res.kind === "MOTOBOY"
+            ? "\n\n_Defina o valor por entrega em *Motoboys → Valores por tipo*._"
+            : "")
+      );
+      await sendText(
+        res.phone,
+        "🎉 *Cadastro aprovado!*\n\n" +
+          `Você agora é *${reqKindLabel(res.kind)}*.\n` +
+          `🔐 Seu código de acesso é *${res.accessCode}*.\n\n` +
+          "Mande uma mensagem aqui e digite esse código para entrar."
+      );
+      return showMainMenu(ctx);
+    },
+  },
+
+  recusar: {
+    prompt: (ctx) => {
+      const sel = ctx.session.data.reqSel ?? [];
+      const lines = sel.map((r: any, i: number) => `${i + 1} - ${reqKindLabel(r.kind)} — ${r.name}`);
+      return ctx.reply("🚫 Qual solicitação *recusar*?\n\n" + (lines.join("\n") || "(nenhuma)"));
+    },
+    handle: async (ctx, text) => {
+      const sel = (ctx.session.data.reqSel ?? [])[Number(text.trim()) - 1];
+      if (!sel) return ctx.reply("Opção inválida.");
+      const req = await rejectRequest(sel.id);
+      if (!req) {
+        await ctx.reply("⚠️ Essa solicitação não está mais pendente.");
+        return showMainMenu(ctx);
+      }
+      await ctx.reply(`🚫 Solicitação de *${sel.name}* recusada.`);
+      await sendText(
+        req.phone,
+        "❌ Sua solicitação de cadastro foi *recusada*. Fale com a loja/administrador para mais informações."
+      );
+      return showMainMenu(ctx);
+    },
+  },
+
+  gerarCodigo: {
+    prompt: async (ctx) => {
+      const admin = await prisma.admin.findUnique({ where: { id: adminId(ctx) } });
+      return ctx.reply(
+        (admin?.inviteCode ? `🔗 Código atual: *${admin.inviteCode}*\n\n` : "") +
+          "Digite *gerar* para criar um novo código de convite (substitui o atual), ou *0* para voltar."
+      );
+    },
+    handle: async (ctx, text) => {
+      if (normalize(text) !== "gerar")
+        return ctx.reply("Digite *gerar* para confirmar, ou *0* para voltar.");
+      const code = await generateInviteCode();
+      await prisma.admin.update({ where: { id: adminId(ctx) }, data: { inviteCode: code } });
+      await ctx.reply(
+        `✅ Novo código de convite: *${code}*\n\n` +
+          "Compartilhe com lojas e motoboys — eles digitam esse código no primeiro acesso."
+      );
       return showMainMenu(ctx);
     },
   },

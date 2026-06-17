@@ -1,5 +1,6 @@
 // Importa todos os fluxos para que se registrem no engine.
 import "./auth.flow";
+import "./cadastro.flow";
 import "./choose.flow";
 import "./superadmin.flow";
 import "./admin.flow";

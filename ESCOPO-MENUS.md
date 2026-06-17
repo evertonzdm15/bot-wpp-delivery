@@ -32,6 +32,28 @@ Rodapé fixo nos menus: `0/VOLTAR ⬅️ · MENU 🏠 · SAIR 🔄 · INICIO ♻
 
 ---
 
+## 🤝 Auto-cadastro via código de convite ✅ IMPLEMENTADO
+Permite que **lojas (filiais)** e **motoboys** se cadastrem sozinhos, sem o Admin
+digitar telefone/código manualmente.
+
+**Como funciona:**
+1. O **Admin** gera um **código de convite** em `Admin → 9️⃣ Solicitações de cadastro
+   → Gerar/alterar código` (6 caracteres, ex.: `K7P2QX`) e compartilha com seus contatos.
+2. No **primeiro acesso**, a pessoa digita esse código na tela de identificação →
+   escolhe **🏪 Loja/Cliente** ou **🛵 Motoboy** → informa nome (e endereço, p/ loja).
+   O telefone é o próprio número do WhatsApp.
+3. Cria uma **solicitação PENDENTE** e notifica automaticamente o(s) número(s) Admin.
+4. O Admin **aprova** ou **recusa** em `Admin → 9️⃣ Solicitações de cadastro`. Ao aprovar:
+   - **Loja** → cria a **Filial** com um código de acesso gerado e concede o perfil 🏪.
+   - **Motoboy** → cria o usuário com código de acesso gerado e concede o perfil 🛵
+     (o valor por entrega é definido depois em `Motoboys → Valores por tipo`).
+5. O solicitante recebe uma mensagem com o **código de acesso** gerado para entrar.
+
+> Modelo de dados: `Admin.inviteCode` + tabela `RegistrationRequest`
+> (`kind`, `name`, `phone`, `extra`, `status: PENDENTE|ACEITO|RECUSADO`).
+
+---
+
 ## ⭐ SUPER ADMIN
 ```
 1️⃣ Admins (cadastro)   → criar / editar / vincular / remover / código de acesso
