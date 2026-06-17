@@ -31,7 +31,8 @@ registerFlow("superadmin", {
           "5️⃣ Histórico / Exportar\n" +
           "6️⃣ Relatório global\n" +
           "7️⃣ Motoboys em rota\n" +
-          "8️⃣ Avisos (broadcast)\n\n" +
+          "8️⃣ Avisos (broadcast)\n" +
+          "9️⃣ Backup (exportar/restaurar)\n\n" +
           `Digite o número da opção.\n${NAV_FOOTER}`
       );
     },
@@ -53,8 +54,10 @@ registerFlow("superadmin", {
           return goTo(ctx, "monitor", "menu");
         case "8":
           return goTo(ctx, "broadcast", "texto");
+        case "9":
+          return goTo(ctx, "backup", "menu");
         default:
-          return ctx.reply("Opção inválida. Digite de *1* a *8*.");
+          return ctx.reply("Opção inválida. Digite de *1* a *9*.");
       }
     },
   },

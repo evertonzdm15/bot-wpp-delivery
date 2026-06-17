@@ -89,10 +89,21 @@ model Branch {
   name          String
   accessCode    String         @unique
   active        Boolean        @default(true)
+  /// JID do grupo de auditoria para onde os pedidos desta filial são encaminhados
+  auditGroupJid String?
   roles         UserRole[]
   tasks         Task[]         @relation("BranchTasks")
   deliveryTypes DeliveryType[]
   createdAt     DateTime       @default(now())
+}
+
+/// Grupos de WhatsApp onde o número do bot está (capturados automaticamente).
+model WaGroup {
+  id        String   @id @default(cuid())
+  jid       String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 /// Tipo de entrega configurável por filial (com prazo próprio).
@@ -144,6 +155,8 @@ model Task {
   motoboy        User?         @relation("TaskMotoboy", fields: [motoboyId], references: [id])
   clientName     String?
   clientPhone    String?
+  /// Endereço de coleta (retirada). Se vazio, a coleta é na própria filial.
+  pickupAddress  String?
   address        String?
   notes          String?
   items          TaskItem[]

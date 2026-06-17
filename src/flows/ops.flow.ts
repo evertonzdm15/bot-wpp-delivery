@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { goTo, registerFlow } from "../core/engine";
 import { Ctx } from "../core/types";
 import { prisma } from "../lib/prisma";
-import { notifyClient, sendTaskMessage, taskInclude } from "../services/task.service";
+import { notifyClient, postToAuditGroup, sendTaskMessage, taskInclude } from "../services/task.service";
 import { sendText } from "../services/evolution.service";
 import { fmtDateTime, formatTaskMessage, normalize, statusLabel } from "../utils/format";
 import { showMainMenu } from "./menu";
@@ -101,6 +101,7 @@ registerFlow("gerenciarPedido", {
       });
       const updated = (await prisma.task.findUnique({ where: { id: t.id }, include: taskInclude }))!;
       await sendTaskMessage(updated.motoboy!.phone, updated, formatTaskMessage(updated));
+      await postToAuditGroup(updated, "atribuido");
       if (oldPhone && oldPhone !== updated.motoboy!.phone) {
         await sendText(oldPhone, `🔄 O pedido *#${t.code}* foi *reatribuído* para outro motoboy.`);
       }

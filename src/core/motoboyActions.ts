@@ -3,7 +3,7 @@ import { Ctx } from "./types";
 import { prisma } from "../lib/prisma";
 import { finishReasonLabel, formatMoney, normalize } from "../utils/format";
 import { hasRole, upsertUser } from "../services/user.service";
-import { notifyClient, taskInclude, TaskFull } from "../services/task.service";
+import { notifyClient, postToAuditGroup, taskInclude, TaskFull } from "../services/task.service";
 import { lancarFinalizacao } from "../services/ledger.service";
 import { motoboyReport, renderReport } from "../services/report.service";
 import { sendText } from "../services/evolution.service";
@@ -45,6 +45,8 @@ export async function actOnTask(ctx: Ctx, task: TaskFull, action: string): Promi
     await notifyCreator(task.createdBy.phone, ctx.msg.phone,
       `🛵 Pedido *#${task.code}* foi assumido por *${me.name ?? me.phone}*.`);
     await notifyClient(task, "saiu");
+    const assigned = await prisma.task.findUnique({ where: { id: task.id }, include: taskInclude });
+    if (assigned) await postToAuditGroup(assigned, "atribuido");
     return;
   }
 

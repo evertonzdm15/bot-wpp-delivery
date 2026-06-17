@@ -148,7 +148,8 @@ function buildSummary(task: any): string {
   if (task.scheduledAt) lines.push(`Horário: ${fmtDateTime(new Date(task.scheduledAt))}`);
   lines.push(`Cliente: ${task.clientName}`);
   if (task.clientPhone) lines.push(`Telefone: ${task.clientPhone}`);
-  lines.push(`Endereço: ${task.address}`);
+  lines.push(`Coleta: ${task.pickupAddress || "na própria filial"}`);
+  lines.push(`Entrega: ${task.address}`);
   lines.push("Itens:");
   for (const i of task.items) lines.push(`  • ${i}`);
   if (task.trItems.length) {
@@ -275,7 +276,7 @@ registerFlow("novaTarefa", {
       switch (normalize(text)) {
         case "1":
           ctx.session.data.task.address = ctx.session.data.task.lastAddress;
-          return goTo(ctx, "novaTarefa", "itens");
+          return goTo(ctx, "novaTarefa", "coleta");
         case "2":
           return goTo(ctx, "novaTarefa", "endereco");
         default:
@@ -290,6 +291,16 @@ registerFlow("novaTarefa", {
       const address = text.trim();
       if (!address) return ctx.reply("Digite o endereço de entrega.");
       ctx.session.data.task.address = address;
+      return goTo(ctx, "novaTarefa", "coleta");
+    },
+  },
+
+  coleta: {
+    optional: true,
+    prompt: (ctx) =>
+      ctx.reply("📤 *Endereço de coleta* (retirada)?\n_(9 = retirar na própria filial)_"),
+    handle: async (ctx, text) => {
+      ctx.session.data.task.pickupAddress = text.trim() || undefined;
       return goTo(ctx, "novaTarefa", "itens");
     },
   },
@@ -391,6 +402,7 @@ registerFlow("novaTarefa", {
         scheduledAt: d.scheduledAt ? new Date(d.scheduledAt) : undefined,
         clientName: d.clientName,
         clientPhone: d.clientPhone,
+        pickupAddress: d.pickupAddress,
         address: d.address,
         notes: d.notes,
         items: d.items,

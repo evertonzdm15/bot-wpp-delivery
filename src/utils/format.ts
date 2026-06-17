@@ -88,40 +88,58 @@ export function parseDateTime(text: string): Date | null {
   return null;
 }
 
-/** Mensagem padrão de um pedido (enviada uma por pedido aos motoboys) */
+export function mapsLink(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+/** Card enxuto do pedido enviado ao motoboy (só o essencial para a entrega). */
 export function formatTaskMessage(t: TaskFull, withInstructions = true): string {
+  const coleta = t.pickupAddress || `Filial ${t.branch.name}`;
   const lines: string[] = [];
-  lines.push(`📦 *PEDIDO #${t.code}*${t.priority ? " 🔴 URGENTE" : ""} — ${t.typeName}`);
-  lines.push(`🏪 Filial: ${t.branch.name}`);
+  lines.push(`📦 *PEDIDO #${t.code}*${t.priority ? " 🔴 URGENTE" : ""}`);
+  lines.push(`🚚 Tipo: ${t.typeName}`);
   if (t.clientName) lines.push(`👤 Cliente: ${t.clientName}`);
-  if (t.clientPhone) lines.push(`📞 Telefone: ${t.clientPhone}`);
-  if (t.address) {
-    lines.push(`📍 Endereço: ${t.address}`);
-    lines.push(`🗺️ Abrir no mapa: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.address)}`);
-  }
-  if (t.items.length) {
-    lines.push("🧾 Itens:");
-    for (const i of t.items) lines.push(`   • ${i.description}`);
-  }
+  lines.push(`📤 Coleta: ${coleta}`);
+  if (t.pickupAddress) lines.push(`   🗺️ ${mapsLink(t.pickupAddress)}`);
   if (t.trItems.length) {
-    lines.push(`🔁 Coletas adicionais (TR) — ${t.trItems.length}:`);
+    lines.push(`🔁 Transferências (${t.trItems.length}):`);
     t.trItems.forEach((tr, idx) => lines.push(`   ${idx + 1}. ${tr}`));
   }
-  if (t.notes) lines.push(`📝 Obs: ${t.notes}`);
-  if (t.dueAt) lines.push(`⏰ Limite: ${fmtDateTime(t.dueAt)}`);
-  lines.push(
-    `👀 Status: ${statusLabel(t.status)}${
-      t.motoboy ? ` | 🛵 ${t.motoboy.name ?? t.motoboy.phone}` : ""
-    }`
-  );
+  if (t.address) {
+    lines.push(`📥 Entrega: ${t.address}`);
+    lines.push(`   🗺️ ${mapsLink(t.address)}`);
+  }
+  lines.push(`⏰ Prazo: ${fmtDateTime(t.dueAt)}`);
 
   if (withInstructions) {
     lines.push("");
-    lines.push("↩️ *Responda (cite) esta mensagem* com:");
-    lines.push("• *pegar* — assumir o pedido");
-    lines.push("• *soltar* — liberar o pedido");
-    lines.push("• *finalizar* — concluir (vou pedir o resultado)");
-    lines.push(`_(ou envie *pegar ${t.code}* / *finalizar ${t.code}*)_`);
+    lines.push(`↩️ *pegar ${t.code}* · *finalizar ${t.code}*  (ou cite esta mensagem)`);
+  }
+  return lines.join("\n");
+}
+
+/** Mensagem completa para o grupo de auditoria (registro da solicitação). */
+export function formatAuditMessage(t: TaskFull, kind: "criado" | "atribuido"): string {
+  const coleta = t.pickupAddress || `Filial ${t.branch.name}`;
+  const lines: string[] = [];
+  lines.push(
+    kind === "criado"
+      ? `🧾 *NOVO PEDIDO #${t.code}* — ${t.typeName}`
+      : `🛵 *PEDIDO #${t.code} ATRIBUÍDO* — ${t.typeName}`
+  );
+  lines.push(`🏪 Filial: ${t.branch.name}`);
+  lines.push(`🙋 Solicitado por: ${t.createdBy.name ?? t.createdBy.phone}`);
+  if (t.clientName) lines.push(`👤 Cliente: ${t.clientName}${t.clientPhone ? ` (${t.clientPhone})` : ""}`);
+  lines.push(`📤 Coleta: ${coleta}`);
+  if (t.address) lines.push(`📥 Entrega: ${t.address}`);
+  if (t.items.length) lines.push(`🧾 Itens: ${t.items.map((i) => i.description).join(", ")}`);
+  if (t.trItems.length) lines.push(`🔁 TRs: ${t.trItems.join(" | ")}`);
+  if (t.notes) lines.push(`📝 Obs: ${t.notes}`);
+  if (t.dueAt) lines.push(`⏰ Prazo: ${fmtDateTime(t.dueAt)}`);
+  if (kind === "atribuido" && t.motoboy) {
+    lines.push(`🛵 Motoboy: ${t.motoboy.name ?? t.motoboy.phone}`);
+  } else {
+    lines.push(`🟡 Status: aguardando motoboy`);
   }
   return lines.join("\n");
 }

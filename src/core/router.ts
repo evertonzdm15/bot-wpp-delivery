@@ -6,6 +6,7 @@ import { entry, showMainMenu, showProfileChooser } from "../flows/menu";
 import { handleQuotedReply } from "./quoted";
 import { actOnTaskByCode, handleMotoboyQuickCommand } from "./motoboyActions";
 import { processImportDocument } from "../flows/import.flow";
+import { processBackupDocument } from "../flows/backup.flow";
 import { sendEmAndamento, sendPedidos } from "../flows/motoboy.flow";
 import { hasRole } from "../services/user.service";
 import { normalize } from "../utils/format";
@@ -53,13 +54,16 @@ export async function handleMessage(msg: IncomingMessage): Promise<void> {
       return;
     }
 
-    // Documento recebido (ex.: XLSX de importação)
+    // Documento recebido (XLSX de importação ou JSON de backup)
     if (msg.document) {
       if (session.flow === "import" && session.step === "aguardando") {
         await processImportDocument(ctx);
+      } else if (session.flow === "backup" && session.step === "aguardando") {
+        await processBackupDocument(ctx);
       } else {
         await ctx.reply(
-          "📎 Recebi um arquivo. Para importar pedidos, entre em *Filial → Importar pedidos (XLSX)*."
+          "📎 Recebi um arquivo. Para importar pedidos: *Filial → Importar pedidos (XLSX)*. " +
+            "Para restaurar backup: *Super Admin → Backup*."
         );
       }
       await ctx.save();

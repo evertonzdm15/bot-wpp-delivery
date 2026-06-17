@@ -1,6 +1,7 @@
 import { redis } from "../lib/redis";
 import { logger } from "../lib/logger";
 import { handleMessage } from "./router";
+import { handleGroupEvent } from "../services/group.service";
 import { jidToPhone } from "../utils/phone";
 
 /** Desembrulha mensagens efêmeras/view-once */
@@ -65,6 +66,15 @@ export async function processWebhook(body: any): Promise<void> {
   const event = String(body?.event ?? "")
     .toLowerCase()
     .replace(/_/g, ".");
+
+  // Captura de grupos (quando o bot é adicionado / o grupo é atualizado)
+  if (event === "groups.upsert" || event === "groups.update") {
+    await handleGroupEvent(body?.data).catch((err) =>
+      logger.error({ err }, "Erro ao processar evento de grupo")
+    );
+    return;
+  }
+
   if (event !== "messages.upsert") return;
 
   const items = Array.isArray(body?.data) ? body.data : [body?.data];

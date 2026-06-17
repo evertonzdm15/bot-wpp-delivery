@@ -87,7 +87,7 @@ registerFlow("adminFilial", {
       return ctx.reply(
         "🏪 *FILIAIS:*\n\n" +
           (lines.join("\n") || "(nenhuma)") +
-          "\n\n1️⃣ Nova filial\n2️⃣ Alterar código\n3️⃣ Ativar/Desativar\n4️⃣ Tipos de entrega + prazos\n\n" +
+          "\n\n1️⃣ Nova filial\n2️⃣ Alterar código\n3️⃣ Ativar/Desativar\n4️⃣ Tipos de entrega + prazos\n5️⃣ Grupo de auditoria\n\n" +
           NAV_FOOTER
       );
     },
@@ -102,9 +102,56 @@ registerFlow("adminFilial", {
           return goTo(ctx, "adminFilial", "selToggle");
         case "4":
           return goTo(ctx, "adminTipos", "selBranch");
+        case "5":
+          return goTo(ctx, "adminFilial", "selGrupoBranch");
         default:
-          return ctx.reply("Digite *1*, *2*, *3* ou *4*.");
+          return ctx.reply("Digite de *1* a *5*.");
       }
+    },
+  },
+
+  selGrupoBranch: {
+    prompt: (ctx) => listBranchSel(ctx, "🏪 Grupo de auditoria — escolha a filial:"),
+    handle: async (ctx, text) => {
+      const b = pickBranch(ctx, text);
+      if (!b) return ctx.reply("Opção inválida.");
+      ctx.session.data.auditBranchId = b.id;
+      return goTo(ctx, "adminFilial", "selGrupo");
+    },
+  },
+
+  selGrupo: {
+    prompt: async (ctx) => {
+      const groups = await prisma.waGroup.findMany({ orderBy: { name: "asc" } });
+      if (!groups.length) {
+        await ctx.reply(
+          "⚠️ Nenhum grupo capturado ainda.\n" +
+            "Adicione o *número do bot* a um grupo do WhatsApp — ele aparece aqui automaticamente.\n\n" +
+            NAV_FOOTER
+        );
+        return showMainMenu(ctx);
+      }
+      ctx.session.data.groupSel = groups.map((g) => ({ jid: g.jid, name: g.name }));
+      const lines = groups.map((g, i) => `${i + 1} - ${g.name}`);
+      return ctx.reply(
+        "📢 Para qual *grupo* encaminhar os pedidos desta filial?\n\n" +
+          lines.join("\n") +
+          "\n0 - ❌ Não encaminhar (remover)\n\nDigite o número:"
+      );
+    },
+    handle: async (ctx, text) => {
+      const t = text.trim();
+      const branchId = ctx.session.data.auditBranchId;
+      if (t === "0") {
+        await prisma.branch.update({ where: { id: branchId }, data: { auditGroupJid: null } });
+        await ctx.reply("✅ Encaminhamento de auditoria *removido* desta filial.");
+        return showMainMenu(ctx);
+      }
+      const sel = (ctx.session.data.groupSel ?? [])[Number(t) - 1];
+      if (!sel) return ctx.reply("Opção inválida. Digite o número de um grupo ou *0*.");
+      await prisma.branch.update({ where: { id: branchId }, data: { auditGroupJid: sel.jid } });
+      await ctx.reply(`✅ Pedidos desta filial serão encaminhados para *${sel.name}*.`);
+      return showMainMenu(ctx);
     },
   },
 

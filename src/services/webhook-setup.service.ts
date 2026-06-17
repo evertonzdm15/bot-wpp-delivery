@@ -23,7 +23,7 @@ export async function ensureWebhook(publicUrl?: string): Promise<void> {
           url,
           webhookByEvents: false,
           webhookBase64: false,
-          events: ["MESSAGES_UPSERT"],
+          events: ["MESSAGES_UPSERT", "GROUPS_UPSERT", "GROUPS_UPDATE"],
         },
       },
       { headers: { apikey: env.EVOLUTION_API_KEY } }

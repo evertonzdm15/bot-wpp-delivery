@@ -2,7 +2,7 @@ import { Prisma, User } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { sendText } from "./evolution.service";
 import { upsertUser } from "./user.service";
-import { formatTaskMessage } from "../utils/format";
+import { formatAuditMessage, formatTaskMessage } from "../utils/format";
 import { canonicalBrazil, isValidPhone } from "../utils/phone";
 import { logger } from "../lib/logger";
 
@@ -29,6 +29,8 @@ export interface NovaTarefaInput {
   scheduledAt?: Date;
   clientName: string;
   clientPhone?: string;
+  /** Endereço de coleta/retirada. Vazio = retira na filial. */
+  pickupAddress?: string;
   address: string;
   notes?: string;
   items: string[];
@@ -57,6 +59,7 @@ export async function createTask(input: NovaTarefaInput): Promise<TaskFull> {
       createdById: creator.id,
       clientName: input.clientName,
       clientPhone: input.clientPhone || null,
+      pickupAddress: input.pickupAddress || null,
       address: input.address,
       notes: input.notes || null,
       scheduledAt: input.scheduled ? input.scheduledAt ?? null : null,
@@ -93,6 +96,16 @@ export async function notifyMotoboys(task: TaskFull, text: string): Promise<numb
   const motoboys = await motoboysDoAdmin(task.adminId);
   for (const m of motoboys) await sendTaskMessage(m.phone, task, text);
   return motoboys.length;
+}
+
+/** Encaminha o pedido ao grupo de auditoria configurado para a filial (se houver). */
+export async function postToAuditGroup(
+  task: TaskFull,
+  kind: "criado" | "atribuido"
+): Promise<void> {
+  const jid = task.branch.auditGroupJid;
+  if (!jid) return;
+  await sendText(jid, formatAuditMessage(task, kind));
 }
 
 /** Notifica o cliente (se houver telefone) sobre o andamento da entrega. */
@@ -134,6 +147,7 @@ export async function createAndDispatch(
   input: NovaTarefaInput
 ): Promise<{ task: TaskFull; assignedTo: User | null; notified: number }> {
   let task = await createTask(input);
+  await postToAuditGroup(task, "criado");
   const auto = await pickAutoMotoboy(task.adminId);
 
   if (auto) {
@@ -144,6 +158,7 @@ export async function createAndDispatch(
     task = (await prisma.task.findUnique({ where: { id: task.id }, include: taskInclude }))!;
     await sendTaskMessage(auto.phone, task, formatTaskMessage(task));
     await notifyClient(task, "saiu");
+    await postToAuditGroup(task, "atribuido");
     return { task, assignedTo: auto, notified: 0 };
   }
 
