@@ -38,6 +38,8 @@ model Admin {
   id            String         @id @default(cuid())
   name          String
   accessCode    String         @unique
+  /// Código de convite (clientes/motoboys usam no primeiro acesso)
+  inviteCode    String?        @unique
   active        Boolean        @default(true)
   /// Taxa da plataforma (Super Admin) em % sobre o valor das entregas
   platformFeePercent Int       @default(0)
@@ -45,7 +47,26 @@ model Admin {
   deliveryTypes DeliveryType[]
   roles         UserRole[]
   tasks         Task[]
+  requests      RegistrationRequest[]
   createdAt     DateTime       @default(now())
+}
+
+/// Solicitação de cadastro (primeiro acesso cliente/motoboy via código de convite).
+model RegistrationRequest {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  /// "CLIENTE" (vira filial) ou "MOTOBOY"
+  kind      String
+  name      String
+  phone     String
+  /// Campo livre extra (ex.: endereço/referência do cliente)
+  extra     String?
+  /// PENDENTE | ACEITO | RECUSADO
+  status    String   @default("PENDENTE")
+  createdAt DateTime @default(now())
+
+  @@index([adminId, status])
 }
 
 model User {

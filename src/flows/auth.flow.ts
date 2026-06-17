@@ -1,6 +1,7 @@
-import { registerFlow } from "../core/engine";
+import { goTo, registerFlow } from "../core/engine";
 import { prisma } from "../lib/prisma";
 import { addRole, upsertUser } from "../services/user.service";
+import { findAdminByInviteCode } from "../services/registration.service";
 import { env } from "../config/env";
 import { afterAuth } from "./menu";
 
@@ -73,6 +74,13 @@ registerFlow("auth", {
       const user = await prisma.user.findUnique({ where: { phone } });
       if (user?.accessCode && user.accessCode === code) {
         return afterAuth(ctx);
+      }
+
+      // 5) Código de convite — primeiro acesso (loja/motoboy solicita cadastro)
+      const inviteAdmin = await findAdminByInviteCode(code);
+      if (inviteAdmin) {
+        ctx.session.data.invite = { adminId: inviteAdmin.id, adminName: inviteAdmin.name };
+        return goTo(ctx, "cadastro", "tipo");
       }
 
       return ctx.reply("❌ Código inválido. Verifique com o administrador e tente novamente.");
